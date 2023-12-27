@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify,session,redirect,render_template,url_for
 from flask_restful import Api
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import check_password_hash
@@ -52,6 +52,25 @@ class ProduceDistribution(db.Model):
     DistributionDate = db.Column(db.String(20), nullable=False)
     SharePercentage = db.Column(db.Numeric, nullable=False)
 
+@app.route('/signup', methods=['POST'])
+def signup_api():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    email = data.get('email')
+    address = data.get('address')
+
+    # Mock database logic (replace with your database logic)
+    # Check if the username is already taken
+    if Users.query.filter_by(Username=username).first():
+        return jsonify(message='Username is already taken'), 400
+
+    # Create a new user
+    new_user = Users(Username=username, Password=generate_password_hash(password), Email=email, Address=address)
+    db.session.add(new_user)
+    db.session.commit()
+
+    return jsonify(message='User created successfully'), 201
 
 # Authentication endpoint
 @app.route('/login', methods=['POST'])
@@ -60,11 +79,11 @@ def login():
     username = data.get('username')
     password = data.get('password')
 
-    # Mock database check (replace this with your database logic)
-    user = next((user for user in users if user['Username'] == username), None)
+    # Check if the user exists in the database
+    user = Users.query.filter_by(Username=username).first()
 
-    if user and check_password_hash(user['Password'], password):
-        access_token = create_access_token(identity=user['UserID'])
+    if user and check_password_hash(user.Password, password):
+        access_token = create_access_token(identity=user.UserID)
         return jsonify(access_token=access_token), 200
     else:
         return jsonify(message='Invalid credentials'), 401
@@ -130,6 +149,27 @@ class TreeResource(Resource):
 
     
 api.add_resource(TreeResource, '/tree')
+from flask_jwt_extended import jwt_required, get_jwt_identity
+
+@app.route('/user_info', methods=['GET'])
+@jwt_required()
+def user_info():
+    # Get the current user's identity from the access token
+    current_user_id = get_jwt_identity()
+
+    # Use the user ID to fetch user-specific information from the database
+    user = Users.query.get(current_user_id)
+
+    if user:
+        # Return user information as JSON
+        return jsonify({
+            'UserID': user.UserID,
+            'Username': user.Username,
+            'Email': user.Email,
+            'Address': user.Address
+        }), 200
+    else:
+        return jsonify(message='User not found'), 404
 
 
 if __name__ == '__main__':
